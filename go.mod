@@ -1,4 +1,4 @@
-module github.com/corona10/goimagehash
+module github.com/xyxu/goimagehash
 
 go 1.19
 
