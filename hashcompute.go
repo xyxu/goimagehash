@@ -11,8 +11,8 @@ import (
 	"math/bits"
 	"sync"
 
-	"github.com/corona10/goimagehash/etcs"
-	"github.com/corona10/goimagehash/transforms"
+	"github.com/xyxu/goimagehash/etcs"
+	"github.com/xyxu/goimagehash/transforms"
 	"github.com/nfnt/resize"
 )
 
