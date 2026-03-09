@@ -487,3 +487,41 @@ func BenchmarkWaveletHash(b *testing.B) {
 		}
 	}
 }
+
+func TestColorHash(t *testing.T) {
+	file1, err := os.Open("_examples/sample1.jpg")
+	if err != nil {
+		t.Errorf("%s", err)
+	}
+	defer file1.Close()
+
+	img1, err := jpeg.Decode(file1)
+	if err != nil {
+		t.Errorf("%s", err)
+	}
+
+	hash, err := ColorHash(img1, 3)
+	if err != nil {
+		t.Errorf("ColorHash failed: %s", err)
+	}
+
+	if hash.Bits() != 42 {
+		t.Errorf("Expected 42 bits, got %d", hash.Bits())
+	}
+
+	hash2, err := ColorHash(img1, 3)
+	if err != nil {
+		t.Errorf("ColorHash failed: %s", err)
+	}
+
+	distance, err := hash.Distance(hash2)
+	if err != nil {
+		t.Errorf("Distance failed: %s", err)
+	}
+
+	if distance != 0 {
+		t.Errorf("Expected distance 0, got %d", distance)
+	}
+
+	t.Logf("ColorHash: %s, bits: %d", hash.ToString(), hash.Bits())
+}

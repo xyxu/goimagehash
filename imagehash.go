@@ -42,6 +42,8 @@ const (
 	DHash
 	// WHash is a enum value of the wavelet hash.
 	WHash
+	// CHash is a enum value of the color hash.
+	CHash
 )
 
 // NewImageHash function creates a new image hash.
@@ -152,6 +154,8 @@ func (h *ImageHash) ToString() string {
 		kindStr = "d"
 	case WHash:
 		kindStr = "w"
+	case CHash:
+		kindStr = "c"
 	}
 	return fmt.Sprintf(strFmt, kindStr, h.hash)
 }
@@ -270,6 +274,8 @@ func ExtImageHashFromString(s string) (*ExtImageHash, error) {
 		kind = DHash
 	case "w":
 		kind = WHash
+	case "c":
+		kind = CHash
 	}
 	return NewExtImageHash(hash, kind, len(hash)*64), nil
 }
@@ -294,6 +300,8 @@ func (h *ExtImageHash) ToString() string {
 		kindStr = "d"
 	case WHash:
 		kindStr = "w"
+	case CHash:
+		kindStr = "c"
 	}
 	return fmt.Sprintf(extStrFmt, kindStr, hexStr)
 }

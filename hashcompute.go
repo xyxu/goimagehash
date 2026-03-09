@@ -265,3 +265,159 @@ func ExtWaveletHash(img image.Image, width, height int) (*ExtImageHash, error) {
 	}
 	return NewExtImageHash(whash, WHash, imgSize), nil
 }
+
+// ColorHash function returns a hash computation of color hash.
+// Implementation follows Python imagehash library.
+// It computes fractions of image in intensity, hue and saturation bins:
+// - the first binbits encode the black fraction of the image
+// - the next binbits encode the gray fraction of the remaining image (low saturation)
+// - the next 6*binbits encode the fraction in 6 bins of saturation, for highly saturated parts
+// - the next 6*binbits encode the fraction in 6 bins of saturation, for mildly saturated parts
+func ColorHash(img image.Image, binbits int) (*ExtImageHash, error) {
+	if img == nil {
+		return nil, errors.New("image object can not be nil")
+	}
+	if binbits <= 0 {
+		return nil, errors.New("binbits must be greater than 0")
+	}
+
+	h, s, _ := transforms.RGBToHSV(img)
+	height := len(h)
+	width := len(h[0])
+	totalPixels := float64(height * width)
+
+	intensity := transforms.GetIntensity(img)
+
+	maskBlack := make([][]bool, height)
+	maskGray := make([][]bool, height)
+	maskColors := make([][]bool, height)
+	maskFaintColors := make([][]bool, height)
+	maskBrightColors := make([][]bool, height)
+
+	countBlack := 0
+	countGray := 0
+	countColors := 0
+	countFaintColors := 0
+	countBrightColors := 0
+
+	blackThreshold := 256 / 8     // 32
+	grayThreshold := 256 / 3      // 85
+	colorThreshold := 256 * 2 / 3 // 170
+
+	for i := 0; i < height; i++ {
+		maskBlack[i] = make([]bool, width)
+		maskGray[i] = make([]bool, width)
+		maskColors[i] = make([]bool, width)
+		maskFaintColors[i] = make([]bool, width)
+		maskBrightColors[i] = make([]bool, width)
+		for j := 0; j < width; j++ {
+			intVal := intensity[i][j]
+			satVal := s[i][j]
+
+			isBlack := intVal < float64(blackThreshold)
+			isGray := satVal < float64(grayThreshold)
+
+			maskBlack[i][j] = isBlack
+			if isBlack {
+				countBlack++
+			} else if isGray {
+				maskGray[i][j] = true
+				countGray++
+			} else {
+				maskColors[i][j] = true
+				countColors++
+
+				if satVal < float64(colorThreshold) {
+					maskFaintColors[i][j] = true
+					countFaintColors++
+				} else {
+					maskBrightColors[i][j] = true
+					countBrightColors++
+				}
+			}
+		}
+	}
+
+	fracBlack := float64(countBlack) / totalPixels
+	fracGray := float64(countGray) / totalPixels
+
+	hueBins := 6
+	hueBinEdges := make([]float64, hueBins+1)
+	for i := 0; i <= hueBins; i++ {
+		hueBinEdges[i] = float64(i) * 256.0 / float64(hueBins)
+	}
+
+	hFaintCounts := make([]int, hueBins)
+	hBrightCounts := make([]int, hueBins)
+
+	for i := 0; i < height; i++ {
+		for j := 0; j < width; j++ {
+			hueVal := h[i][j]
+			if maskFaintColors[i][j] {
+				bin := 0
+				for k := 0; k < hueBins; k++ {
+					if hueVal >= hueBinEdges[k] && hueVal < hueBinEdges[k+1] {
+						bin = k
+						break
+					}
+				}
+				hFaintCounts[bin]++
+			}
+			if maskBrightColors[i][j] {
+				bin := 0
+				for k := 0; k < hueBins; k++ {
+					if hueVal >= hueBinEdges[k] && hueVal < hueBinEdges[k+1] {
+						bin = k
+						break
+					}
+				}
+				hBrightCounts[bin]++
+			}
+		}
+	}
+
+	maxValue := 1 << binbits
+	numBins := 2 + hueBins*2
+
+	values := make([]int, numBins)
+	values[0] = min(maxValue-1, int(fracBlack*float64(maxValue)))
+	values[1] = min(maxValue-1, int(fracGray*float64(maxValue)))
+
+	c := float64(countColors)
+	if c == 0 {
+		c = 1
+	}
+
+	idx := 2
+	for _, count := range hFaintCounts {
+		values[idx] = min(maxValue-1, int(float64(count)/c*float64(maxValue)))
+		idx++
+	}
+	for _, count := range hBrightCounts {
+		values[idx] = min(maxValue-1, int(float64(count)/c*float64(maxValue)))
+		idx++
+	}
+
+	bitLen := numBins * binbits
+	hash := make([]uint64, (bitLen+63)/64)
+
+	for binIdx, val := range values {
+		for bit := 0; bit < binbits; bit++ {
+			overallBit := binIdx*binbits + bit
+			if val&(1<<(binbits-bit-1)) != 0 {
+				hashIndex := overallBit / 64
+				bitIndex := 63 - (overallBit % 64)
+				hash[hashIndex] |= 1 << uint(bitIndex)
+			}
+		}
+	}
+
+	return NewExtImageHash(hash, CHash, bitLen), nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
