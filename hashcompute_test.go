@@ -549,3 +549,39 @@ func TestCropResistantHash(t *testing.T) {
 
 	t.Logf("CropResistantHash: %d segments", len(hash.GetSegmentHashes()))
 }
+
+func BenchmarkColorHash(b *testing.B) {
+	file1, err := os.Open("_examples/sample3.jpg")
+	if err != nil {
+		b.Errorf("%s", err)
+	}
+	defer file1.Close()
+	img1, err := jpeg.Decode(file1)
+	if err != nil {
+		b.Errorf("%s", err)
+	}
+	for i := 0; i < b.N; i++ {
+		_, err := ColorHash(img1, 3)
+		if err != nil {
+			b.Errorf("%s", err)
+		}
+	}
+}
+
+func BenchmarkCropResistantHash(b *testing.B) {
+	file1, err := os.Open("_examples/sample3.jpg")
+	if err != nil {
+		b.Errorf("%s", err)
+	}
+	defer file1.Close()
+	img1, err := jpeg.Decode(file1)
+	if err != nil {
+		b.Errorf("%s", err)
+	}
+	for i := 0; i < b.N; i++ {
+		_, err := CropResistantHash(img1, nil, 0, 0, 0)
+		if err != nil {
+			b.Errorf("%s", err)
+		}
+	}
+}

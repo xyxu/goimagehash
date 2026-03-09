@@ -281,12 +281,10 @@ func ColorHash(img image.Image, binbits int) (*ExtImageHash, error) {
 		return nil, errors.New("binbits must be greater than 0")
 	}
 
-	h, s, _ := transforms.RGBToHSV(img)
+	h, s, _, intensity := transforms.RGBToHSVAndIntensity(img)
 	height := len(h)
 	width := len(h[0])
 	totalPixels := float64(height * width)
-
-	intensity := transforms.GetIntensity(img)
 
 	maskBlack := make([][]bool, height)
 	maskGray := make([][]bool, height)
@@ -297,12 +295,10 @@ func ColorHash(img image.Image, binbits int) (*ExtImageHash, error) {
 	countBlack := 0
 	countGray := 0
 	countColors := 0
-	countFaintColors := 0
-	countBrightColors := 0
 
-	blackThreshold := 256 / 8     // 32
-	grayThreshold := 256 / 3      // 85
-	colorThreshold := 256 * 2 / 3 // 170
+	blackThreshold := 256 / 8
+	grayThreshold := 256 / 3
+	colorThreshold := 256 * 2 / 3
 
 	for i := 0; i < height; i++ {
 		maskBlack[i] = make([]bool, width)
@@ -329,10 +325,8 @@ func ColorHash(img image.Image, binbits int) (*ExtImageHash, error) {
 
 				if satVal < float64(colorThreshold) {
 					maskFaintColors[i][j] = true
-					countFaintColors++
 				} else {
 					maskBrightColors[i][j] = true
-					countBrightColors++
 				}
 			}
 		}
@@ -522,40 +516,47 @@ func applyGaussianBlur(pixels [][]float64, radius int) [][]float64 {
 	}
 	width := len(pixels[0])
 
-	kernelSize := radius*2 + 1
 	sigma := float64(radius) / 3.0
-	kernel := make([]float64, kernelSize)
+	kernel := make([]float64, radius*2+1)
 	sum := 0.0
 
-	for i := 0; i < kernelSize; i++ {
+	for i := 0; i <= radius*2; i++ {
 		x := float64(i - radius)
 		kernel[i] = math.Exp(-(x * x) / (2 * sigma * sigma))
 		sum += kernel[i]
 	}
 
-	for i := 0; i < kernelSize; i++ {
+	for i := 0; i <= radius*2; i++ {
 		kernel[i] /= sum
+	}
+
+	horizontal := make([][]float64, height)
+	for i := 0; i < height; i++ {
+		horizontal[i] = make([]float64, width)
+		for j := 0; j < width; j++ {
+			val := 0.0
+			for k := -radius; k <= radius; k++ {
+				px := j + k
+				if px >= 0 && px < width {
+					val += pixels[i][px] * kernel[k+radius]
+				}
+			}
+			horizontal[i][j] = val
+		}
 	}
 
 	blurred := make([][]float64, height)
 	for i := 0; i < height; i++ {
 		blurred[i] = make([]float64, width)
-	}
-
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
+		for j := 0; j < width; j++ {
 			val := 0.0
-			for ky := -radius; ky <= radius; ky++ {
-				for kx := -radius; kx <= radius; kx++ {
-					px := x + kx
-					py := y + ky
-					if px >= 0 && px < width && py >= 0 && py < height {
-						kernelIdx := ky + radius
-						val += pixels[py][px] * kernel[kernelIdx] * kernel[kx+radius]
-					}
+			for k := -radius; k <= radius; k++ {
+				py := i + k
+				if py >= 0 && py < height {
+					val += horizontal[py][j] * kernel[k+radius]
 				}
 			}
-			blurred[y][x] = val
+			blurred[i][j] = val
 		}
 	}
 

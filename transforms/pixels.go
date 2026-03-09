@@ -103,37 +103,60 @@ func FlattenPixelsFast64(pixels []float64, x int, y int) []float64 {
 // Returns three 2D arrays: H (hue 0-360), S (saturation 0-255), V (value 0-255).
 func RGBToHSV(colorImg image.Image) (h, s, v [][]float64) {
 	bounds := colorImg.Bounds()
-	w, hImg := bounds.Max.X-bounds.Min.X, bounds.Max.Y-bounds.Min.Y
+	_, hImg := bounds.Max.X-bounds.Min.X, bounds.Max.Y-bounds.Min.Y
 
 	h = make([][]float64, hImg)
 	s = make([][]float64, hImg)
 	v = make([][]float64, hImg)
 
-	for i := 0; i < hImg; i++ {
-		h[i] = make([]float64, w)
-		s[i] = make([]float64, w)
-		v[i] = make([]float64, w)
-		for j := 0; j < w; j++ {
-			r, g, b, _ := colorImg.At(j, i).RGBA()
-			rf := float64(r / 257)
-			gf := float64(g / 257)
-			bf := float64(b / 256)
+	switch c := colorImg.(type) {
+	case *image.YCbCr:
+		rgbToHSVYCbCr(c, h, s, v)
+	case *image.RGBA:
+		rgbToHSVRGBA(c, h, s, v)
+	default:
+		rgbToHSVDefault(colorImg, h, s, v)
+	}
 
-			maxVal := math.Max(math.Max(rf, gf), bf)
-			minVal := math.Min(math.Min(rf, gf), bf)
+	return h, s, v
+}
+
+func rgbToHSVYCbCr(colorImg *image.YCbCr, h, s, v [][]float64) {
+	hImg := len(h)
+	w := len(h[0])
+
+	for i := 0; i < hImg; i++ {
+		for j := 0; j < w; j++ {
+			yi := colorImg.Y[j+i*colorImg.YStride]
+			cbi := colorImg.Cb[j+i*colorImg.CStride]
+			cri := colorImg.Cr[j+i*colorImg.CStride]
+
+			rf := float64(yi)
+			gf := float64(yi)
+			bf := float64(yi)
+
+			maxVal := rf
+			minVal := rf
+
+			v[i][j] = rf
+
+			if cbi != 128 || cri != 128 {
+				rf = float64(yi) + 1.402*(float64(cri)-128)
+				gf = float64(yi) - 0.344136*(float64(cbi)-128) - 0.714136*(float64(cri)-128)
+				bf = float64(yi) + 1.772*(float64(cbi)-128)
+
+				maxVal = math.Max(math.Max(rf, gf), bf)
+				minVal = math.Min(math.Min(rf, gf), bf)
+			}
+
 			delta := maxVal - minVal
 
-			// Value (brightness)
-			v[i][j] = maxVal
-
-			// Saturation
 			if maxVal > 0 {
 				s[i][j] = delta / maxVal * 255
 			} else {
 				s[i][j] = 0
 			}
 
-			// Hue
 			if delta == 0 {
 				h[i][j] = 0
 			} else if maxVal == rf {
@@ -148,12 +171,270 @@ func RGBToHSV(colorImg image.Image) (h, s, v [][]float64) {
 				h[i][j] += 360
 			}
 
-			// Scale to 0-255
 			h[i][j] = h[i][j] / 360 * 255
 		}
 	}
+}
 
-	return h, s, v
+func rgbToHSVRGBA(colorImg *image.RGBA, h, s, v [][]float64) {
+	hImg := len(h)
+	w := len(h[0])
+
+	for i := 0; i < hImg; i++ {
+		for j := 0; j < w; j++ {
+			c := colorImg.RGBAAt(j, i)
+			rf := float64(c.R)
+			gf := float64(c.G)
+			bf := float64(c.B)
+
+			maxVal := math.Max(math.Max(rf, gf), bf)
+			minVal := math.Min(math.Min(rf, gf), bf)
+			delta := maxVal - minVal
+
+			v[i][j] = maxVal
+
+			if maxVal > 0 {
+				s[i][j] = delta / maxVal * 255
+			} else {
+				s[i][j] = 0
+			}
+
+			if delta == 0 {
+				h[i][j] = 0
+			} else if maxVal == rf {
+				h[i][j] = 60 * (math.Mod((gf-bf)/delta, 6))
+			} else if maxVal == gf {
+				h[i][j] = 60 * ((bf-rf)/delta + 2)
+			} else {
+				h[i][j] = 60 * ((rf-gf)/delta + 4)
+			}
+
+			if h[i][j] < 0 {
+				h[i][j] += 360
+			}
+
+			h[i][j] = h[i][j] / 360 * 255
+		}
+	}
+}
+
+func rgbToHSVDefault(colorImg image.Image, h, s, v [][]float64) {
+	hImg := len(h)
+	w := len(h[0])
+
+	for i := 0; i < hImg; i++ {
+		for j := 0; j < w; j++ {
+			r, g, b, _ := colorImg.At(j, i).RGBA()
+			rf := float64(r / 257)
+			gf := float64(g / 257)
+			bf := float64(b / 256)
+
+			maxVal := math.Max(math.Max(rf, gf), bf)
+			minVal := math.Min(math.Min(rf, gf), bf)
+			delta := maxVal - minVal
+
+			v[i][j] = maxVal
+
+			if maxVal > 0 {
+				s[i][j] = delta / maxVal * 255
+			} else {
+				s[i][j] = 0
+			}
+
+			if delta == 0 {
+				h[i][j] = 0
+			} else if maxVal == rf {
+				h[i][j] = 60 * (math.Mod((gf-bf)/delta, 6))
+			} else if maxVal == gf {
+				h[i][j] = 60 * ((bf-rf)/delta + 2)
+			} else {
+				h[i][j] = 60 * ((rf-gf)/delta + 4)
+			}
+
+			if h[i][j] < 0 {
+				h[i][j] += 360
+			}
+
+			h[i][j] = h[i][j] / 360 * 255
+		}
+	}
+}
+
+// RGBToHSVAndIntensity converts an RGB image to HSV color space and intensity in a single pass.
+// Returns: h, s, v, intensity
+func RGBToHSVAndIntensity(colorImg image.Image) (h, s, v, intensity [][]float64) {
+	bounds := colorImg.Bounds()
+	_, hImg := bounds.Max.X-bounds.Min.X, bounds.Max.Y-bounds.Min.Y
+
+	h = make([][]float64, hImg)
+	s = make([][]float64, hImg)
+	v = make([][]float64, hImg)
+	intensity = make([][]float64, hImg)
+
+	switch c := colorImg.(type) {
+	case *image.YCbCr:
+		rgbToHSVAndIntensityYCbCr(c, h, s, v, intensity)
+	case *image.RGBA:
+		rgbToHSVAndIntensityRGBA(c, h, s, v, intensity)
+	default:
+		rgbToHSVAndIntensityDefault(colorImg, h, s, v, intensity)
+	}
+
+	return h, s, v, intensity
+}
+
+func rgbToHSVAndIntensityYCbCr(colorImg *image.YCbCr, h, s, v, intensity [][]float64) {
+	hImg := len(h)
+	w := len(h[0])
+
+	for i := 0; i < hImg; i++ {
+		h[i] = make([]float64, w)
+		s[i] = make([]float64, w)
+		v[i] = make([]float64, w)
+		intensity[i] = make([]float64, w)
+		for j := 0; j < w; j++ {
+			yi := colorImg.Y[j+i*colorImg.YStride]
+			cbi := colorImg.Cb[j+i*colorImg.CStride]
+			cri := colorImg.Cr[j+i*colorImg.CStride]
+
+			rf := float64(yi)
+			gf := float64(yi)
+			bf := float64(yi)
+
+			maxVal := rf
+			minVal := rf
+
+			v[i][j] = rf
+			intensity[i][j] = rf
+
+			if cbi != 128 || cri != 128 {
+				rf = float64(yi) + 1.402*(float64(cri)-128)
+				gf = float64(yi) - 0.344136*(float64(cbi)-128) - 0.714136*(float64(cri)-128)
+				bf = float64(yi) + 1.772*(float64(cbi)-128)
+
+				maxVal = math.Max(math.Max(rf, gf), bf)
+				minVal = math.Min(math.Min(rf, gf), bf)
+			}
+
+			delta := maxVal - minVal
+
+			if maxVal > 0 {
+				s[i][j] = delta / maxVal * 255
+			} else {
+				s[i][j] = 0
+			}
+
+			if delta == 0 {
+				h[i][j] = 0
+			} else if maxVal == rf {
+				h[i][j] = 60 * (math.Mod((gf-bf)/delta, 6))
+			} else if maxVal == gf {
+				h[i][j] = 60 * ((bf-rf)/delta + 2)
+			} else {
+				h[i][j] = 60 * ((rf-gf)/delta + 4)
+			}
+
+			if h[i][j] < 0 {
+				h[i][j] += 360
+			}
+
+			h[i][j] = h[i][j] / 360 * 255
+		}
+	}
+}
+
+func rgbToHSVAndIntensityRGBA(colorImg *image.RGBA, h, s, v, intensity [][]float64) {
+	hImg := len(h)
+	w := len(h[0])
+
+	for i := 0; i < hImg; i++ {
+		h[i] = make([]float64, w)
+		s[i] = make([]float64, w)
+		v[i] = make([]float64, w)
+		intensity[i] = make([]float64, w)
+		for j := 0; j < w; j++ {
+			c := colorImg.RGBAAt(j, i)
+			rf := float64(c.R)
+			gf := float64(c.G)
+			bf := float64(c.B)
+
+			maxVal := math.Max(math.Max(rf, gf), bf)
+			minVal := math.Min(math.Min(rf, gf), bf)
+			delta := maxVal - minVal
+
+			v[i][j] = maxVal
+			intensity[i][j] = 0.299*rf + 0.587*gf + 0.114*bf
+
+			if maxVal > 0 {
+				s[i][j] = delta / maxVal * 255
+			} else {
+				s[i][j] = 0
+			}
+
+			if delta == 0 {
+				h[i][j] = 0
+			} else if maxVal == rf {
+				h[i][j] = 60 * (math.Mod((gf-bf)/delta, 6))
+			} else if maxVal == gf {
+				h[i][j] = 60 * ((bf-rf)/delta + 2)
+			} else {
+				h[i][j] = 60 * ((rf-gf)/delta + 4)
+			}
+
+			if h[i][j] < 0 {
+				h[i][j] += 360
+			}
+
+			h[i][j] = h[i][j] / 360 * 255
+		}
+	}
+}
+
+func rgbToHSVAndIntensityDefault(colorImg image.Image, h, s, v, intensity [][]float64) {
+	hImg := len(h)
+	w := len(h[0])
+
+	for i := 0; i < hImg; i++ {
+		h[i] = make([]float64, w)
+		s[i] = make([]float64, w)
+		v[i] = make([]float64, w)
+		intensity[i] = make([]float64, w)
+		for j := 0; j < w; j++ {
+			r, g, b, _ := colorImg.At(j, i).RGBA()
+			rf := float64(r / 257)
+			gf := float64(g / 257)
+			bf := float64(b / 256)
+
+			maxVal := math.Max(math.Max(rf, gf), bf)
+			minVal := math.Min(math.Min(rf, gf), bf)
+			delta := maxVal - minVal
+
+			v[i][j] = maxVal
+			intensity[i][j] = 0.299*rf + 0.587*gf + 0.114*bf
+
+			if maxVal > 0 {
+				s[i][j] = delta / maxVal * 255
+			} else {
+				s[i][j] = 0
+			}
+
+			if delta == 0 {
+				h[i][j] = 0
+			} else if maxVal == rf {
+				h[i][j] = 60 * (math.Mod((gf-bf)/delta, 6))
+			} else if maxVal == gf {
+				h[i][j] = 60 * ((bf-rf)/delta + 2)
+			} else {
+				h[i][j] = 60 * ((rf-gf)/delta + 4)
+			}
+
+			if h[i][j] < 0 {
+				h[i][j] += 360
+			}
+
+			h[i][j] = h[i][j] / 360 * 255
+		}
+	}
 }
 
 // GetIntensity returns grayscale intensity of an image (0-255).
