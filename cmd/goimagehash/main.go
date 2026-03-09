@@ -13,10 +13,11 @@ import (
 )
 
 var (
-	hashType  string
-	binbits   int
-	hashSize  int
-	allHashes bool
+	hashType     string
+	binbits      int
+	hashSize     int
+	allHashes    bool
+	outputFormat string
 )
 
 func init() {
@@ -24,10 +25,17 @@ func init() {
 	flag.IntVar(&binbits, "binbits", 3, "Bin bits for colorhash (default: 3)")
 	flag.IntVar(&hashSize, "size", 8, "Hash size for ahash, phash, dhash, whash (default: 8)")
 	flag.BoolVar(&allHashes, "all", false, "Compute all hash types")
+	flag.StringVar(&outputFormat, "format", "text", "Output format: text, json")
 }
 
 func main() {
 	flag.Parse()
+
+	// Validate format
+	if outputFormat != "text" && outputFormat != "json" {
+		fmt.Fprintf(os.Stderr, "Error: invalid format '%s'. Must be 'text' or 'json'\n", outputFormat)
+		os.Exit(1)
+	}
 
 	if flag.NArg() < 1 {
 		fmt.Fprintf(os.Stderr, "Usage: %s [options] <image_file>\n", os.Args[0])
