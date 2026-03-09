@@ -31,6 +31,59 @@ type ExtImageHash struct {
 	bits int
 }
 
+// ImageMultiHash is an image hash containing a list of individual hashes for segments of the image.
+type ImageMultiHash struct {
+	segmentHashes []*ExtImageHash
+}
+
+// NewImageMultiHash creates a new ImageMultiHash.
+func NewImageMultiHash(hashes []*ExtImageHash) *ImageMultiHash {
+	return &ImageMultiHash{segmentHashes: hashes}
+}
+
+// GetSegmentHashes returns the segment hashes.
+func (h *ImageMultiHash) GetSegmentHashes() []*ExtImageHash {
+	return h.segmentHashes
+}
+
+// Distance method returns the distance between two multi-hashes.
+func (h *ImageMultiHash) Distance(other *ImageMultiHash) (int, int, error) {
+	if other == nil {
+		return -1, -1, errNoOther
+	}
+
+	if len(h.segmentHashes) == 0 || len(other.segmentHashes) == 0 {
+		return -1, -1, errors.New("ImageMultiHash cannot be empty")
+	}
+
+	hammingCutoff := len(h.segmentHashes[0].GetHash()) * 64 * 25 / 100
+
+	matches := 0
+	sumDistance := 0
+
+	for _, segHash := range h.segmentHashes {
+		lowestDistance := -1
+		for _, otherSegHash := range other.segmentHashes {
+			if segHash.GetKind() != otherSegHash.GetKind() {
+				continue
+			}
+			dist, err := segHash.Distance(otherSegHash)
+			if err != nil {
+				continue
+			}
+			if lowestDistance == -1 || dist < lowestDistance {
+				lowestDistance = dist
+			}
+		}
+		if lowestDistance != -1 && lowestDistance <= hammingCutoff {
+			matches++
+			sumDistance += lowestDistance
+		}
+	}
+
+	return matches, sumDistance, nil
+}
+
 const (
 	// Unknown is a enum value of the unknown hash.
 	Unknown Kind = iota
@@ -44,6 +97,8 @@ const (
 	WHash
 	// CHash is a enum value of the color hash.
 	CHash
+	// CropHash is a enum value of the crop-resistant hash.
+	CropHash
 )
 
 // NewImageHash function creates a new image hash.
@@ -138,6 +193,10 @@ func ImageHashFromString(s string) (*ImageHash, error) {
 		kind = DHash
 	case "w":
 		kind = WHash
+	case "c":
+		kind = CHash
+	case "r":
+		kind = CropHash
 	}
 	return NewImageHash(hash, kind), nil
 }
@@ -156,6 +215,8 @@ func (h *ImageHash) ToString() string {
 		kindStr = "w"
 	case CHash:
 		kindStr = "c"
+	case CropHash:
+		kindStr = "r"
 	}
 	return fmt.Sprintf(strFmt, kindStr, h.hash)
 }
@@ -276,6 +337,8 @@ func ExtImageHashFromString(s string) (*ExtImageHash, error) {
 		kind = WHash
 	case "c":
 		kind = CHash
+	case "r":
+		kind = CropHash
 	}
 	return NewExtImageHash(hash, kind, len(hash)*64), nil
 }
@@ -302,6 +365,8 @@ func (h *ExtImageHash) ToString() string {
 		kindStr = "w"
 	case CHash:
 		kindStr = "c"
+	case CropHash:
+		kindStr = "r"
 	}
 	return fmt.Sprintf(extStrFmt, kindStr, hexStr)
 }

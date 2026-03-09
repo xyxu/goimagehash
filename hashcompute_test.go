@@ -525,3 +525,27 @@ func TestColorHash(t *testing.T) {
 
 	t.Logf("ColorHash: %s, bits: %d", hash.ToString(), hash.Bits())
 }
+
+func TestCropResistantHash(t *testing.T) {
+	file1, err := os.Open("_examples/sample1.jpg")
+	if err != nil {
+		t.Errorf("%s", err)
+	}
+	defer file1.Close()
+
+	img1, err := jpeg.Decode(file1)
+	if err != nil {
+		t.Errorf("%s", err)
+	}
+
+	hash, err := CropResistantHash(img1, nil, 0, 0, 0)
+	if err != nil {
+		t.Errorf("CropResistantHash failed: %s", err)
+	}
+
+	if len(hash.GetSegmentHashes()) == 0 {
+		t.Errorf("Expected at least one segment hash")
+	}
+
+	t.Logf("CropResistantHash: %d segments", len(hash.GetSegmentHashes()))
+}

@@ -174,3 +174,176 @@ func GetIntensity(colorImg image.Image) [][]float64 {
 
 	return pixels
 }
+
+// Point represents a 2D point
+type Point struct {
+	X int
+	Y int
+}
+
+// Segment represents a region in the image
+type Segment struct {
+	Points []Point
+}
+
+// FindAllSegments finds all regions within an image pixel array.
+// Uses watershed-like algorithm to segment bright and dark areas.
+func FindAllSegments(pixels [][]float64, segmentThreshold float64, minSegmentSize int) []Segment {
+	height := len(pixels)
+	if height == 0 {
+		return nil
+	}
+	width := len(pixels[0])
+
+	thresholdPixels := make([][]bool, height)
+	unassignedPixels := make([][]bool, height)
+
+	for i := 0; i < height; i++ {
+		thresholdPixels[i] = make([]bool, width)
+		unassignedPixels[i] = make([]bool, width)
+		for j := 0; j < width; j++ {
+			thresholdPixels[i][j] = pixels[i][j] > segmentThreshold
+			unassignedPixels[i][j] = true
+		}
+	}
+
+	alreadySegmented := make(map[Point]bool)
+
+	addBorderPixels(height, width, alreadySegmented)
+
+	segments := findRegions(thresholdPixels, unassignedPixels, alreadySegmented, minSegmentSize, true)
+
+	for i := 0; i < height; i++ {
+		for j := 0; j < width; j++ {
+			thresholdPixels[i][j] = !thresholdPixels[i][j]
+		}
+	}
+
+	segments = append(segments, findRegions(thresholdPixels, unassignedPixels, alreadySegmented, minSegmentSize, false)...)
+
+	return segments
+}
+
+func addBorderPixels(height int, width int, alreadySegmented map[Point]bool) {
+	for i := 0; i < width; i++ {
+		alreadySegmented[Point{X: i, Y: -1}] = true
+		alreadySegmented[Point{X: i, Y: height}] = true
+	}
+	for i := 0; i < height; i++ {
+		alreadySegmented[Point{X: -1, Y: i}] = true
+		alreadySegmented[Point{X: width, Y: i}] = true
+	}
+}
+
+func findRegions(thresholdPixels, unassignedPixels [][]bool, alreadySegmented map[Point]bool, minSegmentSize int, firstPass bool) []Segment {
+	height := len(thresholdPixels)
+	width := len(thresholdPixels[0])
+	segments := []Segment{}
+
+	for {
+		found := false
+		for i := 0; i < height; i++ {
+			for j := 0; j < width; j++ {
+				if thresholdPixels[i][j] && unassignedPixels[i][j] {
+					segment := findRegion(i, j, thresholdPixels, unassignedPixels, alreadySegmented)
+					if len(segment) >= minSegmentSize {
+						points := make([]Point, len(segment))
+						idx := 0
+						for p := range segment {
+							points[idx] = p
+							idx++
+						}
+						segments = append(segments, Segment{Points: points})
+					}
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			break
+		}
+	}
+
+	return segments
+}
+
+func findRegion(startX, startY int, thresholdPixels, unassignedPixels [][]bool, alreadySegmented map[Point]bool) map[Point]bool {
+	height := len(thresholdPixels)
+	width := len(thresholdPixels[0])
+
+	segment := make(map[Point]bool)
+	queue := make([]Point, 0)
+	queue = append(queue, Point{X: startY, Y: startX})
+
+	for len(queue) > 0 {
+		point := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+
+		if point.Y < 0 || point.Y >= height || point.X < 0 || point.X >= width {
+			continue
+		}
+
+		if segment[point] {
+			continue
+		}
+
+		if !thresholdPixels[point.Y][point.X] || !unassignedPixels[point.Y][point.X] {
+			continue
+		}
+
+		if alreadySegmented[point] {
+			continue
+		}
+
+		segment[point] = true
+		unassignedPixels[point.Y][point.X] = false
+
+		neighbors := []Point{
+			{X: point.X - 1, Y: point.Y},
+			{X: point.X + 1, Y: point.Y},
+			{X: point.X, Y: point.Y - 1},
+			{X: point.X, Y: point.Y + 1},
+		}
+
+		for _, n := range neighbors {
+			if n.Y >= 0 && n.Y < height && n.X >= 0 && n.X < width {
+				if thresholdPixels[n.Y][n.X] && unassignedPixels[n.Y][n.X] && !alreadySegmented[n] {
+					queue = append(queue, n)
+				}
+			}
+		}
+	}
+
+	return segment
+}
+
+// GetBoundingBox returns the bounding box of a segment
+func GetBoundingBox(segment Segment) (minX, minY, maxX, maxY int) {
+	if len(segment.Points) == 0 {
+		return 0, 0, 0, 0
+	}
+	minX = segment.Points[0].X
+	minY = segment.Points[0].Y
+	maxX = segment.Points[0].X
+	maxY = segment.Points[0].Y
+
+	for _, p := range segment.Points {
+		if p.X < minX {
+			minX = p.X
+		}
+		if p.X > maxX {
+			maxX = p.X
+		}
+		if p.Y < minY {
+			minY = p.Y
+		}
+		if p.Y > maxY {
+			maxY = p.Y
+		}
+	}
+	return minX, minY, maxX, maxY
+}

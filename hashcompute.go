@@ -421,3 +421,143 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// CropResistantHash function returns a crop-resistant hash.
+// It uses watershed-like algorithm to segment the image into bright and dark regions,
+// then computes a hash for each segment.
+// This makes the image much more resistant to cropping than other algorithms.
+func CropResistantHash(img image.Image, hashFunc func(image.Image) (*ExtImageHash, error), segmentThreshold float64, minSegmentSize, segmentationImageSize int) (*ImageMultiHash, error) {
+	if img == nil {
+		return nil, errors.New("image object can not be nil")
+	}
+
+	if hashFunc == nil {
+		hashFunc = func(img image.Image) (*ExtImageHash, error) {
+			return ExtDifferenceHash(img, 8, 8)
+		}
+	}
+
+	if segmentThreshold == 0 {
+		segmentThreshold = 128
+	}
+
+	if minSegmentSize == 0 {
+		minSegmentSize = 500
+	}
+
+	if segmentationImageSize == 0 {
+		segmentationImageSize = 300
+	}
+
+	resized := resize.Resize(uint(segmentationImageSize), uint(segmentationImageSize), img, resize.Bilinear)
+	pixels := transforms.Rgb2Gray(resized)
+
+	blurredPixels := applyGaussianBlur(pixels, 3)
+
+	segments := transforms.FindAllSegments(blurredPixels, segmentThreshold, minSegmentSize)
+
+	if len(segments) == 0 {
+		fullSegment := make([]transforms.Point, segmentationImageSize*segmentationImageSize)
+		idx := 0
+		for i := 0; i < segmentationImageSize; i++ {
+			for j := 0; j < segmentationImageSize; j++ {
+				fullSegment[idx] = transforms.Point{X: j, Y: i}
+				idx++
+			}
+		}
+		segments = append(segments, transforms.Segment{Points: fullSegment})
+	}
+
+	bounds := img.Bounds()
+	origWidth := float64(bounds.Max.X - bounds.Min.X)
+	origHeight := float64(bounds.Max.Y - bounds.Min.Y)
+	scaleX := origWidth / float64(segmentationImageSize)
+	scaleY := origHeight / float64(segmentationImageSize)
+
+	var hashes []*ExtImageHash
+
+	for _, segment := range segments {
+		minX, minY, maxX, maxY := transforms.GetBoundingBox(segment)
+
+		cropMinX := int(float64(minX) * scaleX)
+		cropMinY := int(float64(minY) * scaleY)
+		cropMaxX := int((float64(maxX) + 1) * scaleX)
+		cropMaxY := int((float64(maxY) + 1) * scaleY)
+
+		if cropMaxX-cropMinX < 8 || cropMaxY-cropMinY < 8 {
+			continue
+		}
+
+		cropped := img.(interface {
+			SubImage(image.Rectangle) image.Image
+		}).SubImage(image.Rect(cropMinX, cropMinY, cropMaxX, cropMaxY))
+
+		if cropped == nil {
+			continue
+		}
+
+		hash, err := hashFunc(cropped)
+		if err != nil {
+			continue
+		}
+
+		hashes = append(hashes, hash)
+	}
+
+	if len(hashes) == 0 {
+		hash, err := hashFunc(img)
+		if err != nil {
+			return nil, err
+		}
+		hashes = append(hashes, hash)
+	}
+
+	return NewImageMultiHash(hashes), nil
+}
+
+func applyGaussianBlur(pixels [][]float64, radius int) [][]float64 {
+	height := len(pixels)
+	if height == 0 {
+		return pixels
+	}
+	width := len(pixels[0])
+
+	kernelSize := radius*2 + 1
+	sigma := float64(radius) / 3.0
+	kernel := make([]float64, kernelSize)
+	sum := 0.0
+
+	for i := 0; i < kernelSize; i++ {
+		x := float64(i - radius)
+		kernel[i] = math.Exp(-(x * x) / (2 * sigma * sigma))
+		sum += kernel[i]
+	}
+
+	for i := 0; i < kernelSize; i++ {
+		kernel[i] /= sum
+	}
+
+	blurred := make([][]float64, height)
+	for i := 0; i < height; i++ {
+		blurred[i] = make([]float64, width)
+	}
+
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			val := 0.0
+			for ky := -radius; ky <= radius; ky++ {
+				for kx := -radius; kx <= radius; kx++ {
+					px := x + kx
+					py := y + ky
+					if px >= 0 && px < width && py >= 0 && py < height {
+						kernelIdx := ky + radius
+						val += pixels[py][px] * kernel[kernelIdx] * kernel[kx+radius]
+					}
+				}
+			}
+			blurred[y][x] = val
+		}
+	}
+
+	return blurred
+}
