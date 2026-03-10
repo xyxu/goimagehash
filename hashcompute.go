@@ -26,7 +26,7 @@ func AverageHash(img image.Image) (*ImageHash, error) {
 
 	// Create 64bits hash.
 	ahash := NewImageHash(0, AHash)
-	resized := resize.Resize(8, 8, img, resize.Bilinear)
+	resized := resize.Resize(8, 8, img, resize.Lanczos3)
 	pixels := transforms.Rgb2Gray(resized)
 	flattens := transforms.FlattenPixels(pixels, 8, 8)
 	avg := etcs.MeanOfPixels(flattens)
@@ -49,7 +49,7 @@ func DifferenceHash(img image.Image) (*ImageHash, error) {
 	}
 
 	dhash := NewImageHash(0, DHash)
-	resized := resize.Resize(9, 8, img, resize.Bilinear)
+	resized := resize.Resize(9, 8, img, resize.Lanczos3)
 	pixels := transforms.Rgb2Gray(resized)
 	idx := 0
 	for i := 0; i < len(pixels); i++ {
@@ -73,20 +73,25 @@ func PerceptionHash(img image.Image) (*ImageHash, error) {
 	}
 
 	phash := NewImageHash(0, PHash)
-	resized := resize.Resize(64, 64, img, resize.Bilinear)
+	// Python imagehash uses 32x32 (8 * 4) for perception hash, not 64x64
+	resized := resize.Resize(32, 32, img, resize.Lanczos3)
 
-	pixels := pixelPool64.Get().(*[]float64)
+	pixels := transforms.Rgb2Gray(resized)
+	dctResult := transforms.DCT2D(pixels, 32, 32)
+	var lowFreq [64]float64
+	idx := 0
+	for i := 0; i < 8; i++ {
+		for j := 0; j < 8; j++ {
+			lowFreq[idx] = dctResult[i][j]
+			idx++
+		}
+	}
 
-	transforms.Rgb2GrayFast(resized, pixels)
-	flattens := transforms.DCT2DFast64(pixels)
+	median := etcs.MedianOfPixelsFast64(lowFreq[:])
 
-	pixelPool64.Put(pixels)
-
-	median := etcs.MedianOfPixelsFast64(flattens[:])
-
-	for idx, p := range flattens {
+	for idx, p := range lowFreq {
 		if p > median {
-			phash.leftShiftSet(64 - idx - 1) // leftShiftSet
+			phash.leftShiftSet(64 - idx - 1)
 		}
 	}
 
@@ -104,7 +109,7 @@ func WaveletHash(img image.Image) (*ImageHash, error) {
 	whash := NewImageHash(0, WHash)
 
 	imgScale := transforms.Floorp2(transforms.Min(bounds.Max.X, bounds.Max.Y))
-	resized := resize.Resize(imgScale, imgScale, img, resize.Bilinear)
+	resized := resize.Resize(imgScale, imgScale, img, resize.Lanczos3)
 	pixels := transforms.Rgb2Gray(resized)
 	maxlevel := bits.Len(imgScale) - 1
 	transforms.DWT2D(pixels, maxlevel)
@@ -141,7 +146,7 @@ func ExtPerceptionHash(img image.Image, width, height int) (*ExtImageHash, error
 		return nil, errors.New("width * height should be power of 2")
 	}
 	var phash []uint64
-	resized := resize.Resize(uint(imgSize), uint(imgSize), img, resize.Bilinear)
+	resized := resize.Resize(uint(imgSize), uint(imgSize), img, resize.Lanczos3)
 	pixels := transforms.Rgb2Gray(resized)
 	dct := transforms.DCT2D(pixels, imgSize, imgSize)
 	flattens := transforms.FlattenPixels(dct, width, height)
@@ -172,7 +177,7 @@ func ExtAverageHash(img image.Image, width, height int) (*ExtImageHash, error) {
 	var ahash []uint64
 	imgSize := width * height
 
-	resized := resize.Resize(uint(width), uint(height), img, resize.Bilinear)
+	resized := resize.Resize(uint(width), uint(height), img, resize.Lanczos3)
 	pixels := transforms.Rgb2Gray(resized)
 	flattens := transforms.FlattenPixels(pixels, width, height)
 	avg := etcs.MeanOfPixels(flattens)
@@ -203,7 +208,7 @@ func ExtDifferenceHash(img image.Image, width, height int) (*ExtImageHash, error
 	var dhash []uint64
 	imgSize := width * height
 
-	resized := resize.Resize(uint(width)+1, uint(height), img, resize.Bilinear)
+	resized := resize.Resize(uint(width)+1, uint(height), img, resize.Lanczos3)
 	pixels := transforms.Rgb2Gray(resized)
 
 	lenOfUnit := 64
@@ -240,7 +245,7 @@ func ExtWaveletHash(img image.Image, width, height int) (*ExtImageHash, error) {
 	var whash []uint64
 	bounds := img.Bounds()
 	imgScale := transforms.Floorp2(transforms.Min(bounds.Max.X, bounds.Max.Y))
-	resized := resize.Resize(imgScale, imgScale, img, resize.Bilinear)
+	resized := resize.Resize(imgScale, imgScale, img, resize.Lanczos3)
 	pixels := transforms.Rgb2Gray(resized)
 	maxlevel := bits.Len(imgScale) - 1
 	hashlevel := bits.Len(uint(math.Sqrt(float64(imgSize)))) - 1
@@ -443,7 +448,7 @@ func CropResistantHash(img image.Image, hashFunc func(image.Image) (*ExtImageHas
 		segmentationImageSize = 300
 	}
 
-	resized := resize.Resize(uint(segmentationImageSize), uint(segmentationImageSize), img, resize.Bilinear)
+	resized := resize.Resize(uint(segmentationImageSize), uint(segmentationImageSize), img, resize.Lanczos3)
 	pixels := transforms.Rgb2Gray(resized)
 
 	blurredPixels := applyGaussianBlur(pixels, 3)

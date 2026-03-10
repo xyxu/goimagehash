@@ -20,7 +20,7 @@ func Rgb2Gray(colorImg image.Image) [][]float64 {
 		for j := range pixels[i] {
 			color := colorImg.At(j, i)
 			r, g, b, _ := color.RGBA()
-			lum := 0.299*float64(r/257) + 0.587*float64(g/257) + 0.114*float64(b/256)
+			lum := pixel2Gray(r, g, b, 0)
 			pixels[i][j] = lum
 		}
 	}
@@ -46,8 +46,26 @@ func Rgb2GrayFast(colorImg image.Image, pixels *[]float64) {
 }
 
 // pixel2Gray converts a pixel to grayscale value base on luminosity
+// Uses Python PIL's exact formula: R*299/1000 + G*587/1000 + B*114/1000
+// where R,G,B are in range 0-255
+// Returns integer value 0-255 to match Python's PIL convert('L')
 func pixel2Gray(r, g, b, a uint32) float64 {
-	return 0.299*float64(r/257) + 0.587*float64(g/257) + 0.114*float64(b/256)
+	// Scale from 0-65535 to 0-255 (same as r/257)
+	R := float64(r) / 257.0
+	G := float64(g) / 257.0
+	B := float64(b) / 257.0
+
+	// Python PIL uses integer arithmetic: R*299/1000 + G*587/1000 + B*114/1000
+	// First, scale to 0-255 integer like Python does
+	R_int := int(R + 0.5) // Round to nearest integer
+	G_int := int(G + 0.5)
+	B_int := int(B + 0.5)
+
+	// Apply Python's integer arithmetic formula
+	// Note: Python does integer division: R*299/1000 means (R*299)//1000
+	lum_int := (R_int*299 + G_int*587 + B_int*114) / 1000
+
+	return float64(lum_int)
 }
 
 // rgb2GrayDefault uses the image.Image interface
@@ -127,23 +145,22 @@ func rgbToHSVYCbCr(colorImg *image.YCbCr, h, s, v [][]float64) {
 
 	for i := 0; i < hImg; i++ {
 		for j := 0; j < w; j++ {
-			yi := colorImg.Y[j+i*colorImg.YStride]
-			cbi := colorImg.Cb[j+i*colorImg.CStride]
-			cri := colorImg.Cr[j+i*colorImg.CStride]
+			ycbcr := colorImg.YCbCrAt(j, i)
+			y, cb, cr := ycbcr.Y, ycbcr.Cb, ycbcr.Cr
 
-			rf := float64(yi)
-			gf := float64(yi)
-			bf := float64(yi)
+			rf := float64(y)
+			gf := float64(y)
+			bf := float64(y)
 
 			maxVal := rf
 			minVal := rf
 
 			v[i][j] = rf
 
-			if cbi != 128 || cri != 128 {
-				rf = float64(yi) + 1.402*(float64(cri)-128)
-				gf = float64(yi) - 0.344136*(float64(cbi)-128) - 0.714136*(float64(cri)-128)
-				bf = float64(yi) + 1.772*(float64(cbi)-128)
+			if cb != 128 || cr != 128 {
+				rf = float64(y) + 1.402*(float64(cr)-128)
+				gf = float64(y) - 0.344136*(float64(cb)-128) - 0.714136*(float64(cr)-128)
+				bf = float64(y) + 1.772*(float64(cb)-128)
 
 				maxVal = math.Max(math.Max(rf, gf), bf)
 				minVal = math.Min(math.Min(rf, gf), bf)
@@ -227,7 +244,7 @@ func rgbToHSVDefault(colorImg image.Image, h, s, v [][]float64) {
 			r, g, b, _ := colorImg.At(j, i).RGBA()
 			rf := float64(r / 257)
 			gf := float64(g / 257)
-			bf := float64(b / 256)
+			bf := float64(b / 257)
 
 			maxVal := math.Max(math.Max(rf, gf), bf)
 			minVal := math.Min(math.Min(rf, gf), bf)
@@ -264,12 +281,20 @@ func rgbToHSVDefault(colorImg image.Image, h, s, v [][]float64) {
 // Returns: h, s, v, intensity
 func RGBToHSVAndIntensity(colorImg image.Image) (h, s, v, intensity [][]float64) {
 	bounds := colorImg.Bounds()
-	_, hImg := bounds.Max.X-bounds.Min.X, bounds.Max.Y-bounds.Min.Y
+	w := bounds.Max.X - bounds.Min.X
+	hImg := bounds.Max.Y - bounds.Min.Y
 
 	h = make([][]float64, hImg)
 	s = make([][]float64, hImg)
 	v = make([][]float64, hImg)
 	intensity = make([][]float64, hImg)
+
+	for i := 0; i < hImg; i++ {
+		h[i] = make([]float64, w)
+		s[i] = make([]float64, w)
+		v[i] = make([]float64, w)
+		intensity[i] = make([]float64, w)
+	}
 
 	switch c := colorImg.(type) {
 	case *image.YCbCr:
@@ -293,13 +318,12 @@ func rgbToHSVAndIntensityYCbCr(colorImg *image.YCbCr, h, s, v, intensity [][]flo
 		v[i] = make([]float64, w)
 		intensity[i] = make([]float64, w)
 		for j := 0; j < w; j++ {
-			yi := colorImg.Y[j+i*colorImg.YStride]
-			cbi := colorImg.Cb[j+i*colorImg.CStride]
-			cri := colorImg.Cr[j+i*colorImg.CStride]
+			ycbcr := colorImg.YCbCrAt(j, i)
+			y, cb, cr := ycbcr.Y, ycbcr.Cb, ycbcr.Cr
 
-			rf := float64(yi)
-			gf := float64(yi)
-			bf := float64(yi)
+			rf := float64(y)
+			gf := float64(y)
+			bf := float64(y)
 
 			maxVal := rf
 			minVal := rf
@@ -307,10 +331,10 @@ func rgbToHSVAndIntensityYCbCr(colorImg *image.YCbCr, h, s, v, intensity [][]flo
 			v[i][j] = rf
 			intensity[i][j] = rf
 
-			if cbi != 128 || cri != 128 {
-				rf = float64(yi) + 1.402*(float64(cri)-128)
-				gf = float64(yi) - 0.344136*(float64(cbi)-128) - 0.714136*(float64(cri)-128)
-				bf = float64(yi) + 1.772*(float64(cbi)-128)
+			if cb != 128 || cr != 128 {
+				rf = float64(y) + 1.402*(float64(cr)-128)
+				gf = float64(y) - 0.344136*(float64(cb)-128) - 0.714136*(float64(cr)-128)
+				bf = float64(y) + 1.772*(float64(cb)-128)
 
 				maxVal = math.Max(math.Max(rf, gf), bf)
 				minVal = math.Min(math.Min(rf, gf), bf)
@@ -403,7 +427,7 @@ func rgbToHSVAndIntensityDefault(colorImg image.Image, h, s, v, intensity [][]fl
 			r, g, b, _ := colorImg.At(j, i).RGBA()
 			rf := float64(r / 257)
 			gf := float64(g / 257)
-			bf := float64(b / 256)
+			bf := float64(b / 257)
 
 			maxVal := math.Max(math.Max(rf, gf), bf)
 			minVal := math.Min(math.Min(rf, gf), bf)
@@ -448,7 +472,7 @@ func GetIntensity(colorImg image.Image) [][]float64 {
 		for j := range pixels[i] {
 			color := colorImg.At(j, i)
 			r, g, b, _ := color.RGBA()
-			lum := 0.299*float64(r/257) + 0.587*float64(g/257) + 0.114*float64(b/256)
+			lum := 0.299*float64(r/257) + 0.587*float64(g/257) + 0.114*float64(b/257)
 			pixels[i][j] = lum
 		}
 	}

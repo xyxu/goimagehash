@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 )
 
 var errNoOther = errors.New("other should not be nil")
@@ -345,6 +346,10 @@ func ExtImageHashFromString(s string) (*ExtImageHash, error) {
 
 // ToString returns a hex representation of big hash
 func (h *ExtImageHash) ToString() string {
+	if h.kind == CHash {
+		return h.colorHashToString()
+	}
+
 	var hexBytes []byte
 	for _, hash := range h.hash {
 		hashBytes := make([]byte, 8)
@@ -369,4 +374,33 @@ func (h *ExtImageHash) ToString() string {
 		kindStr = "r"
 	}
 	return fmt.Sprintf(extStrFmt, kindStr, hexStr)
+}
+
+// colorHashToString formats color hash to match Python imagehash output
+func (h *ExtImageHash) colorHashToString() string {
+	if len(h.hash) == 0 {
+		return "c:"
+	}
+
+	bitLen := h.bits
+	if bitLen == 0 {
+		bitLen = 64
+	}
+
+	hashWord := h.hash[0]
+	var binaryStr string
+	for i := 0; i < bitLen; i++ {
+		bitPos := 63 - i
+		if (hashWord>>uint(bitPos))&1 == 1 {
+			binaryStr += "1"
+		} else {
+			binaryStr += "0"
+		}
+	}
+
+	hexDigits := (bitLen + 3) / 4
+	intVal, _ := strconv.ParseUint(binaryStr, 2, 64)
+	hexStr := fmt.Sprintf("%0*x", hexDigits, intVal)
+
+	return fmt.Sprintf("c:%s", hexStr)
 }

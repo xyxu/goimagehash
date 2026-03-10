@@ -10,14 +10,8 @@ type HashResult struct {
 
 // SegmentHash represents a segment in crop-resistant hash
 type SegmentHash struct {
-	Value  string `json:"value"`
-	Bits   int    `json:"bits"`
-	Bounds struct {
-		MinX int `json:"min_x"`
-		MinY int `json:"min_y"`
-		MaxX int `json:"max_x"`
-		MaxY int `json:"max_y"`
-	} `json:"bounds,omitempty"`
+	Value string `json:"value"`
+	Bits  int    `json:"bits"`
 }
 
 // CropResistantResult represents crop-resistant hash result

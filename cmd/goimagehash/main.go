@@ -21,7 +21,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&hashType, "type", "ahash", "Hash type: ahash, phash, dhash, whash, colorhash, cropresistant")
+	flag.StringVar(&hashType, "type", "ahash", "Hash type: ahash, phash, dhash, whash, colorhash, cropresistant, extahash, extphash, extdhash, extwhash")
 	flag.IntVar(&binbits, "binbits", 3, "Bin bits for colorhash (default: 3)")
 	flag.IntVar(&hashSize, "size", 8, "Hash size for ahash, phash, dhash, whash (default: 8)")
 	flag.BoolVar(&allHashes, "all", false, "Compute all hash types")
@@ -52,10 +52,21 @@ func main() {
 	}
 
 	if allHashes {
-		printAllHashes(img)
+		printAllHashes(img, imagePath)
 	} else {
-		printHash(img, hashType)
+		printHash(img, hashType, imagePath)
 	}
+}
+
+// Helper function to extract hex value from hash string
+func extractHashValue(hashStr string) string {
+	// Format is "a:ffff3f030703c1f0" or "c:1c00000000000000"
+	// Extract part after ":"
+	parts := strings.SplitN(hashStr, ":", 2)
+	if len(parts) == 2 {
+		return parts[1]
+	}
+	return hashStr
 }
 
 func loadImage(path string) (image.Image, error) {
@@ -81,110 +92,173 @@ func loadImage(path string) (image.Image, error) {
 	return img, nil
 }
 
-func printHash(img image.Image, hashType string) {
-	var hashStr string
-
+func computeHash(img image.Image, hashType string) (*HashResult, *CropResistantResult, error) {
 	switch strings.ToLower(hashType) {
 	case "ahash", "average":
 		hash, err := goimagehash.AverageHash(img)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return nil, nil, err
 		}
-		hashStr = fmt.Sprintf("%s (bits: %d)", hash.ToString(), hash.Bits())
+		return &HashResult{
+			Type:  "ahash",
+			Value: extractHashValue(hash.ToString()),
+			Bits:  hash.Bits(),
+		}, nil, nil
 
 	case "phash", "perceptual":
 		hash, err := goimagehash.PerceptionHash(img)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return nil, nil, err
 		}
-		hashStr = fmt.Sprintf("%s (bits: %d)", hash.ToString(), hash.Bits())
+		return &HashResult{
+			Type:  "phash",
+			Value: extractHashValue(hash.ToString()),
+			Bits:  hash.Bits(),
+		}, nil, nil
 
 	case "dhash", "difference":
 		hash, err := goimagehash.DifferenceHash(img)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return nil, nil, err
 		}
-		hashStr = fmt.Sprintf("%s (bits: %d)", hash.ToString(), hash.Bits())
+		return &HashResult{
+			Type:  "dhash",
+			Value: extractHashValue(hash.ToString()),
+			Bits:  hash.Bits(),
+		}, nil, nil
 
 	case "whash", "wavelet":
 		hash, err := goimagehash.WaveletHash(img)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return nil, nil, err
 		}
-		hashStr = fmt.Sprintf("%s (bits: %d)", hash.ToString(), hash.Bits())
+		return &HashResult{
+			Type:  "whash",
+			Value: extractHashValue(hash.ToString()),
+			Bits:  hash.Bits(),
+		}, nil, nil
 
 	case "colorhash", "color":
 		hash, err := goimagehash.ColorHash(img, binbits)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return nil, nil, err
 		}
-		hashStr = fmt.Sprintf("%s (bits: %d)", hash.ToString(), hash.Bits())
+		return &HashResult{
+			Type:    "colorhash",
+			Value:   extractHashValue(hash.ToString()),
+			Bits:    hash.Bits(),
+			Binbits: binbits,
+		}, nil, nil
 
 	case "cropresistant", "crop":
 		hash, err := goimagehash.CropResistantHash(img, nil, 0, 0, 0)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return nil, nil, err
 		}
+
 		segments := hash.GetSegmentHashes()
-		hashStr = fmt.Sprintf("%d segments", len(segments))
-		for i, seg := range segments {
-			hashStr += fmt.Sprintf("\n  segment%d: %s (bits: %d)", i+1, seg.ToString(), seg.Bits())
+		result := &CropResistantResult{
+			Type:     "cropresistant",
+			Segments: len(segments),
 		}
+
+		for _, seg := range segments {
+			segmentHash := SegmentHash{
+				Value: extractHashValue(seg.ToString()),
+				Bits:  seg.Bits(),
+			}
+			result.SegmentHashes = append(result.SegmentHashes, segmentHash)
+		}
+
+		return nil, result, nil
 
 	case "extahash":
 		hash, err := goimagehash.ExtAverageHash(img, hashSize, hashSize)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return nil, nil, err
 		}
-		hashStr = fmt.Sprintf("%s (bits: %d)", hash.ToString(), hash.Bits())
+		return &HashResult{
+			Type:  "extahash",
+			Value: extractHashValue(hash.ToString()),
+			Bits:  hash.Bits(),
+		}, nil, nil
 
 	case "extphash":
 		hash, err := goimagehash.ExtPerceptionHash(img, hashSize, hashSize)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return nil, nil, err
 		}
-		hashStr = fmt.Sprintf("%s (bits: %d)", hash.ToString(), hash.Bits())
+		return &HashResult{
+			Type:  "extphash",
+			Value: extractHashValue(hash.ToString()),
+			Bits:  hash.Bits(),
+		}, nil, nil
 
 	case "extdhash":
 		hash, err := goimagehash.ExtDifferenceHash(img, hashSize, hashSize)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return nil, nil, err
 		}
-		hashStr = fmt.Sprintf("%s (bits: %d)", hash.ToString(), hash.Bits())
+		return &HashResult{
+			Type:  "extdhash",
+			Value: extractHashValue(hash.ToString()),
+			Bits:  hash.Bits(),
+		}, nil, nil
 
 	case "extwhash":
 		hash, err := goimagehash.ExtWaveletHash(img, hashSize, hashSize)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-			os.Exit(1)
+			return nil, nil, err
 		}
-		hashStr = fmt.Sprintf("%s (bits: %d)", hash.ToString(), hash.Bits())
+		return &HashResult{
+			Type:  "extwhash",
+			Value: extractHashValue(hash.ToString()),
+			Bits:  hash.Bits(),
+		}, nil, nil
 
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown hash type: %s\n", hashType)
+		return nil, nil, fmt.Errorf("unknown hash type: %s", hashType)
+	}
+}
+
+func printHash(img image.Image, hashType string, imagePath string) {
+	hashResult, cropResult, err := computeHash(img, hashType)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("%s: %s\n", hashType, hashStr)
+	if outputFormat == "json" {
+		outputJSON(imagePath, hashResult, cropResult)
+	} else {
+		outputText(hashResult, cropResult)
+	}
 }
 
-func printAllHashes(img image.Image) {
-	fmt.Println("Computing all hashes:")
-	fmt.Println()
+func printAllHashes(img image.Image, imagePath string) {
+	hashTypes := []string{"ahash", "phash", "dhash", "whash", "colorhash", "cropresistant"}
+	hashes := make(map[string]HashResult)
+	var cropResult *CropResistantResult
 
-	hashTypes := []string{"ahash", "phash", "dhash", "whash", "colorhash"}
-
+	// Compute all hashes
 	for _, ht := range hashTypes {
-		fmt.Printf("%s: ", ht)
-		printHash(img, ht)
+		hashResult, cropRes, err := computeHash(img, ht)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error computing %s: %v\n", ht, err)
+			os.Exit(1)
+		}
+
+		if ht == "cropresistant" {
+			cropResult = cropRes
+		} else if hashResult != nil {
+			hashes[ht] = *hashResult
+		}
+	}
+
+	// Output based on format
+	if outputFormat == "json" {
+		outputAllJSON(imagePath, hashes, cropResult)
+	} else {
+		outputAllText(hashes, cropResult)
 	}
 }

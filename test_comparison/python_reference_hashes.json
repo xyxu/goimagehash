@@ -1,0 +1,50 @@
+{
+  "sample1.jpg": {
+    "image": "sample1.jpg",
+    "hashes": {
+      "average": "7eff3f030703c1fc",
+      "difference": "e89f6f63af4f8b69",
+      "perception": "af95d2205c7b1f82",
+      "wavelet": "3cff3f010703c1f8",
+      "color": "07000000000",
+      "color_binbits1": "1000",
+      "crop_resistant": "e89f6f63af4f8b69,381c971979695d39,882c2e4fe7c36160,21838485331b276e"
+    }
+  },
+  "sample2.jpg": {
+    "image": "sample2.jpg",
+    "hashes": {
+      "average": "003c7e7e7e7e3c18",
+      "difference": "71f0f4d2f0b8f071",
+      "perception": "95274a996be4349e",
+      "wavelet": "003c7e7e7e7e3c00",
+      "color": "17000000000",
+      "color_binbits1": "1000",
+      "crop_resistant": "f0f4b6d2f078f0f0,71f0f4d2f0b8f071,39181b1b23431d0c"
+    }
+  },
+  "sample3.jpg": {
+    "image": "sample3.jpg",
+    "hashes": {
+      "average": "7eff3f030703c1fc",
+      "difference": "e89f6f63af4f8bc9",
+      "perception": "af95d2205c7b1f82",
+      "wavelet": "7cff3f010303c1f8",
+      "color": "07000000000",
+      "color_binbits1": "1000",
+      "crop_resistant": "e89f6f63af4f8bc9,3b3c9f1971695d39,2183840d331ba3ee"
+    }
+  },
+  "sample4.jpg": {
+    "image": "sample4.jpg",
+    "hashes": {
+      "average": "183c3e3e7e2e3c18",
+      "difference": "716cd4e8dccc78b1",
+      "perception": "979c5a9369cd6518",
+      "wavelet": "183c3e3e7e3e3c08",
+      "color": "33000000000",
+      "color_binbits1": "2000",
+      "crop_resistant": "f0d6b64b591e9ef0,716cd4e8dccc78b1"
+    }
+  }
+}
