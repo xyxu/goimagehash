@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"strconv"
 )
 
@@ -384,23 +385,39 @@ func (h *ExtImageHash) colorHashToString() string {
 
 	bitLen := h.bits
 	if bitLen == 0 {
-		bitLen = 64
+		bitLen = len(h.hash) * 64
 	}
 
-	hashWord := h.hash[0]
-	var binaryStr string
+	var binaryStr []byte
+	binaryStr = make([]byte, bitLen)
+
 	for i := 0; i < bitLen; i++ {
-		bitPos := 63 - i
-		if (hashWord>>uint(bitPos))&1 == 1 {
-			binaryStr += "1"
+		hashIndex := i / 64
+		bitOffset := 63 - (i % 64)
+
+		if hashIndex >= len(h.hash) {
+			binaryStr[i] = '0'
+			continue
+		}
+
+		if (h.hash[hashIndex]>>uint(bitOffset))&1 == 1 {
+			binaryStr[i] = '1'
 		} else {
-			binaryStr += "0"
+			binaryStr[i] = '0'
 		}
 	}
 
 	hexDigits := (bitLen + 3) / 4
-	intVal, _ := strconv.ParseUint(binaryStr, 2, 64)
-	hexStr := fmt.Sprintf("%0*x", hexDigits, intVal)
+
+	var hexStr string
+	if bitLen <= 64 {
+		intVal, _ := strconv.ParseUint(string(binaryStr), 2, 64)
+		hexStr = fmt.Sprintf("%0*x", hexDigits, intVal)
+	} else {
+		intVal := new(big.Int)
+		intVal.SetString(string(binaryStr), 2)
+		hexStr = fmt.Sprintf("%0*x", hexDigits, intVal)
+	}
 
 	return fmt.Sprintf("c:%s", hexStr)
 }
